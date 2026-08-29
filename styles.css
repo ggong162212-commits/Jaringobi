@@ -329,21 +329,58 @@ h1, h2, h3 { font-family: 'Jua', sans-serif; font-weight: 400; margin: 0; letter
 .pill.even { background: var(--cream); color: var(--ink-soft); }
 
 /* ---------- 기록/캘린더 ---------- */
-.history-list { display: flex; flex-direction: column; gap: 10px; }
-.h-item {
+.history-note {
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  margin-top: -6px;
+}
+.history-today {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--cream);
+  box-shadow: none;
+}
+.history-today b {
+  display: block;
+  color: var(--accent-deep);
+  font-family: 'Jua', sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  margin-top: 2px;
+}
+.history-today .muted:last-child { font-size: 11px; text-align: right; }
+.today-arrow { color: var(--accent); font-size: 20px; }
+.history-list { display: flex; flex-direction: column; gap: 10px; }
+.h-item {
+  appearance: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   background: var(--surface);
   border-radius: var(--radius-sm);
   padding: 15px 17px;
   box-shadow: var(--shadow-sm);
 }
+.h-item.editable { cursor: pointer; transition: transform .1s, box-shadow .15s; }
+.h-item.editable:active { transform: scale(.98); }
+.h-item:not(.editable) { opacity: .62; }
 .h-item .date { font-size: 14px; color: var(--ink-soft); }
 .h-item .date b { display:block; font-family:'Jua',sans-serif; color: var(--ink); font-size: 16px; font-weight: 400; }
-.h-item .nums { text-align: right; }
-.h-item .nums .spent { font-family:'Jua',sans-serif; font-size: 17px; }
-.h-item .nums .delta { font-size: 13px; margin-top: 2px; }
+.h-item .nums { text-align: right; margin-left: auto; }
+.h-item .nums .spent { display: block; font-family:'Jua',sans-serif; font-size: 17px; }
+.h-item .nums .delta { display: block; font-size: 13px; margin-top: 2px; }
+.edit-mark { color: var(--accent); font-size: 24px; line-height: 1; margin-left: 2px; }
 .delta.save { color: var(--good); }
 .delta.over { color: var(--bad); }
 .delta.even { color: var(--ink-faint); }
@@ -404,6 +441,9 @@ h1, h2, h3 { font-family: 'Jua', sans-serif; font-weight: 400; margin: 0; letter
 .cal-cell.over { background: var(--bad-soft); color: #e24b4b; }
 .cal-cell.even { background: var(--beige); color: var(--ink); }
 .cal-cell.today { outline: 2px solid var(--accent); outline-offset: -1px; }
+.cal-cell.editable { cursor: pointer; transition: transform .1s, box-shadow .15s; }
+.cal-cell.editable:active { transform: scale(.92); }
+.cal-cell.editable:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2px; }
 .cal-cell .d { font-family:'Jua',sans-serif; font-size: 13px; }
 .cal-cell .m { font-size: 10px; margin-top: 1px; }
 

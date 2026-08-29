@@ -86,18 +86,34 @@
   //  (오늘 available - spent 가 곧 다음 carry 이며, 이는 base-spent 의 누적합과 동일)
   // ---------------------------------------------------------------------
 
+  /** 목표 기간 안에 포함되는 날짜인지 확인 */
+  function isInPeriod(s, key) {
+    var idx = diffDays(s.startDate, key);
+    return idx >= 0 && idx < s.totalDays;
+  }
+
   /** 시작일부터 targetKey "이전" 날까지 기록된 (base - spent)의 누적 = targetKey 시작 시점 carry */
   function carryBefore(s, targetKey) {
     var carry = 0;
     var keys = Object.keys(s.entries);
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
-      // targetKey 보다 앞선 날짜만 합산
-      if (diffDays(k, targetKey) > 0) {
+      // 목표 기간 안에서 targetKey 보다 앞선 날짜만 합산
+      if (isInPeriod(s, k) && diffDays(k, targetKey) > 0) {
         carry += (s.dailyBase - s.entries[k]);
       }
     }
     return carry;
+  }
+
+  /** 특정 날짜에 쓸 수 있는 금액 */
+  function availableForDate(s, targetKey) {
+    return s.dailyBase + carryBefore(s, targetKey);
+  }
+
+  /** 사용자가 지출을 입력하거나 수정할 수 있는 날짜인지 확인 */
+  function canEditDate(s, targetKey) {
+    return isInPeriod(s, targetKey) && diffDays(targetKey, todayKey()) >= 0;
   }
 
   /** 오늘 기준 종합 정보 */
@@ -108,7 +124,7 @@
     var remaining = Math.max(0, s.totalDays - diffDays(s.startDate, tKey) - 1);
 
     var carry = carryBefore(s, tKey);             // 오늘 시작 시점 이월 잔액
-    var available = s.dailyBase + carry;          // 오늘 쓸 수 있는 금액
+    var available = availableForDate(s, tKey);   // 오늘 쓸 수 있는 금액
     var todaySpent = s.entries[tKey];             // 오늘 입력값 (undefined 가능)
     var loggedToday = todaySpent !== undefined;
 
@@ -500,31 +516,39 @@
   // ---------------------------------------------------------------------
   //  3) 지출 입력 화면
   // ---------------------------------------------------------------------
-  function ScreenSpend() {
+  function ScreenSpend(targetKey) {
     var s = loadState();
     if (!s) return ScreenSetup();
-    var c = compute(s);
+
+    targetKey = targetKey || todayKey();
+    if (!canEditDate(s, targetKey)) return go("history");
+
+    var isToday = targetKey === todayKey();
+    var targetAvailable = availableForDate(s, targetKey);
+    var existing = s.entries[targetKey];
+    var logged = existing !== undefined;
+    var dateLabel = isToday ? "오늘" : prettyDate(targetKey);
 
     var node = el(
       '<div class="screen">' +
         '<div class="page-head">' +
           '<button class="icon-btn" id="back">←</button>' +
-          '<h2>오늘 지출 입력</h2>' +
+          '<h2>' + dateLabel + ' 지출 ' + (logged ? '수정' : '입력') + '</h2>' +
         '</div>' +
 
         '<div class="card center" style="background:var(--cream);box-shadow:none">' +
-          '<div class="muted" style="font-size:14px">오늘 쓸 수 있는 금액</div>' +
+          '<div class="muted" style="font-size:14px">' + dateLabel + ' 쓸 수 있는 금액</div>' +
           '<div style="font-family:\'Jua\',sans-serif;font-size:30px;color:' +
-            (c.available < 0 ? 'var(--bad)' : 'var(--ink)') + ';margin-top:2px">' + won(c.available) + '</div>' +
-          (c.carry !== 0
+            (targetAvailable < 0 ? 'var(--bad)' : 'var(--ink)') + ';margin-top:2px">' + won(targetAvailable) + '</div>' +
+          (targetAvailable !== s.dailyBase
             ? '<div class="muted" style="font-size:12.5px;margin-top:3px">기본 ' + comma(s.dailyBase) + '원 ' +
-                (c.carry > 0 ? '＋ 적립 ' + comma(c.carry) : '− 초과 ' + comma(-c.carry)) + '원</div>'
+                (targetAvailable > s.dailyBase ? '＋ 적립 ' + comma(targetAvailable - s.dailyBase) : '− 초과 ' + comma(s.dailyBase - targetAvailable)) + '원</div>'
             : '') +
         '</div>' +
 
         '<div class="card">' +
           '<div class="field" style="margin-bottom:0">' +
-            '<label>오늘 쓴 금액</label>' +
+            '<label>' + dateLabel + ' 쓴 금액</label>' +
             '<div class="input-wrap">' +
               '<input id="in-spent" inputmode="numeric" placeholder="0" autofocus />' +
               '<span class="suffix">원</span>' +
@@ -539,7 +563,7 @@
         '</div>' +
 
         '<div class="spacer"></div>' +
-        '<button class="btn btn-primary" id="submit" disabled>입력 완료</button>' +
+        '<button class="btn btn-primary" id="submit" disabled>' + (logged ? '수정 완료' : '입력 완료') + '</button>' +
       '</div>'
     );
 
@@ -547,8 +571,8 @@
     var submit = node.querySelector("#submit");
     var touched = false;
 
-    if (c.loggedToday) {
-      inSpent.value = comma(c.todaySpent);
+    if (logged) {
+      inSpent.value = comma(existing);
       touched = true;
       submit.disabled = false;
     }
@@ -568,15 +592,15 @@
       });
     });
 
-    node.querySelector("#back").addEventListener("click", function () { go("home"); });
+    node.querySelector("#back").addEventListener("click", function () { go(isToday ? "home" : "history"); });
 
     submit.addEventListener("click", function () {
       if (submit.disabled) return;
       var spent = parseNum(inSpent.value);
       var s2 = loadState();
-      s2.entries[c.tKey] = spent;
+      s2.entries[targetKey] = spent;
       saveState(s2);
-      ScreenResult(c.available, spent);
+      ScreenResult(targetKey, targetAvailable, spent);
     });
 
     render(node);
@@ -586,13 +610,23 @@
   // ---------------------------------------------------------------------
   //  지출 결과 피드백 화면 (햄스터 반응)
   // ---------------------------------------------------------------------
-  function ScreenResult(available, spent) {
+  function ScreenResult(targetKey, available, spent) {
+    var isToday = targetKey === todayKey();
     var delta = available - spent;       // + 적립, - 초과
     var mood = moodFor(delta);
-    var nextKey = addDays(todayKey(), 1);
+    var nextKey = addDays(targetKey, 1);
+    var s = loadState();
+    var c = compute(s);
+    var nextAvailable = isInPeriod(s, nextKey) ? availableForDate(s, nextKey) : null;
 
     var title, sub, pillCls, pillTxt, amtCls;
-    if (delta > 0) {
+    if (!isToday) {
+      title = prettyDate(targetKey) + " 기록을 수정했어요";
+      sub = "수정한 지출이 이후 날짜와 오늘 쓸 수 있는 금액에 반영됐어요.";
+      pillCls = delta > 0 ? "save" : delta < 0 ? "over" : "even";
+      pillTxt = delta > 0 ? "＋ 적립" : delta < 0 ? "− 초과" : "딱 맞음";
+      amtCls = pillCls;
+    } else if (delta > 0) {
       title = "와! 오늘 " + comma(delta) + "원 아꼈어요 🐹";
       sub = "아낀 만큼 내일 예산에 그대로 적립됐어요.";
       pillCls = "save"; pillTxt = "＋ 적립"; amtCls = "save";
@@ -606,11 +640,6 @@
       pillCls = "even"; pillTxt = "딱 맞음"; amtCls = "even";
     }
 
-    var s = loadState();
-    var c = compute(s);
-    var nextAvailable = s.dailyBase + delta; // 다음날 기본예산 + 오늘 이월
-    // (단, 기간 종료 여부는 홈에서 처리)
-
     var node = el(
       '<div class="screen center" style="justify-content:center;text-align:center">' +
         '<div class="spacer"></div>' +
@@ -623,24 +652,32 @@
 
         '<div class="card" style="margin-top:22px;text-align:left">' +
           '<div style="display:flex;justify-content:space-between;align-items:center">' +
-            '<div class="muted" style="font-size:14px">오늘 쓴 금액</div>' +
+            '<div class="muted" style="font-size:14px">' + prettyDate(targetKey) + ' 쓴 금액</div>' +
             '<div style="font-family:\'Jua\',sans-serif;font-size:18px">' + won(spent) + '</div>' +
           '</div>' +
-          '<div style="height:1px;background:var(--beige);margin:13px 0"></div>' +
-          '<div style="display:flex;justify-content:space-between;align-items:center">' +
-            '<div class="muted" style="font-size:14px">내일 쓸 수 있는 금액</div>' +
-            '<div style="font-family:\'Jua\',sans-serif;font-size:18px;color:' +
-              (nextAvailable < 0 ? 'var(--bad)' : 'var(--accent-deep)') + '">' + won(nextAvailable) + '</div>' +
-          '</div>' +
+          (nextAvailable === null ? '' :
+            '<div style="height:1px;background:var(--beige);margin:13px 0"></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center">' +
+              '<div class="muted" style="font-size:14px">다음날 쓸 수 있는 금액</div>' +
+              '<div style="font-family:\'Jua\',sans-serif;font-size:18px;color:' +
+                (nextAvailable < 0 ? 'var(--bad)' : 'var(--accent-deep)') + '">' + won(nextAvailable) + '</div>' +
+            '</div>') +
+          (!isToday ?
+            '<div style="height:1px;background:var(--beige);margin:13px 0"></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center">' +
+              '<div class="muted" style="font-size:14px">오늘 쓸 수 있는 금액</div>' +
+              '<div style="font-family:\'Jua\',sans-serif;font-size:18px;color:' +
+                (c.available < 0 ? 'var(--bad)' : 'var(--accent-deep)') + '">' + won(c.available) + '</div>' +
+            '</div>' : '') +
         '</div>' +
 
         '<div class="spacer"></div>' +
-        '<button class="btn btn-primary" id="done">확인</button>' +
+        '<button class="btn btn-primary" id="done">' + (isToday ? '확인' : '기록으로 돌아가기') + '</button>' +
       '</div>'
     );
 
     node.querySelector("#res-mascot").innerHTML = hamsterSVG(mood);
-    node.querySelector("#done").addEventListener("click", function () { go("home"); });
+    node.querySelector("#done").addEventListener("click", function () { go(isToday ? "home" : "history"); });
     render(node);
 
     countUp(node.querySelector("#res-num"), Math.abs(delta), { dur: 750 });
@@ -652,8 +689,9 @@
   function ScreenHistory() {
     var s = loadState();
     if (!s) return ScreenSetup();
+    var c = compute(s);
 
-    // 시작일~오늘(또는 종료일)까지 날짜 리스트
+    // 시작일부터 오늘(또는 목표 마지막 날)까지 모든 날짜를 보여준다.
     var lastIdx = Math.min(s.totalDays - 1, diffDays(s.startDate, todayKey()));
     var rows = [];
     for (var i = 0; i <= Math.max(lastIdx, 0); i++) {
@@ -663,33 +701,39 @@
     }
 
     var listHTML = "";
-    if (Object.keys(s.entries).length === 0) {
-      listHTML = '<div class="empty">아직 기록이 없어요.<br>오늘 지출을 입력하면 여기에 차곡차곡 쌓여요! 🐹</div>';
-    } else {
-      rows.slice().reverse().forEach(function (r) {
-        var logged = r.spent !== undefined;
-        var delta = logged ? (s.dailyBase - r.spent) : null;
-        var dcls = !logged ? "even" : delta > 0 ? "save" : delta < 0 ? "over" : "even";
-        var dtxt = !logged ? "미입력"
-          : delta > 0 ? "＋" + comma(delta) + " 적립"
-          : delta < 0 ? "−" + comma(-delta) + " 초과"
-          : "딱 맞음";
-        listHTML +=
-          '<div class="h-item">' +
-            '<div class="date"><b>' + (r.idx + 1) + '일차</b>' + prettyDate(r.key) + '</div>' +
-            '<div class="nums">' +
-              '<div class="spent">' + (logged ? won(r.spent) : "—") + '</div>' +
-              '<div class="delta ' + dcls + '">' + dtxt + '</div>' +
-            '</div>' +
-          '</div>';
-      });
-    }
+    rows.slice().reverse().forEach(function (r) {
+      var logged = r.spent !== undefined;
+      var dailyAvailable = availableForDate(s, r.key);
+      var delta = logged ? (dailyAvailable - r.spent) : null;
+      var dcls = !logged ? "even" : delta > 0 ? "save" : delta < 0 ? "over" : "even";
+      var dtxt = !logged ? "미입력 · 눌러서 입력"
+        : delta > 0 ? "＋" + comma(delta) + " 적립 · 수정"
+        : delta < 0 ? "−" + comma(-delta) + " 초과 · 수정"
+        : "딱 맞음 · 수정";
+      var editable = canEditDate(s, r.key);
+      listHTML +=
+        '<button class="h-item' + (editable ? ' editable' : '') + '" data-key="' + r.key + '" ' +
+          (editable ? '' : 'disabled') + '>' +
+          '<span class="date"><b>' + (r.idx + 1) + '일차</b>' + prettyDate(r.key) + '</span>' +
+          '<span class="nums">' +
+            '<span class="spent">' + (logged ? won(r.spent) : "—") + '</span>' +
+            '<span class="delta ' + dcls + '">' + dtxt + '</span>' +
+          '</span>' +
+          (editable ? '<span class="edit-mark">›</span>' : '') +
+        '</button>';
+    });
 
     var node = el(
       '<div class="screen">' +
         '<div class="page-head">' +
           '<button class="icon-btn" id="back">←</button>' +
           '<h2>나의 절약 기록</h2>' +
+        '</div>' +
+        '<div class="history-note">날짜를 누르면 지난 지출도 입력하거나 수정할 수 있어요.</div>' +
+        '<div class="card history-today">' +
+          '<div><div class="muted">오늘 쓸 수 있는 금액</div><b>' + won(c.available) + '</b></div>' +
+          '<span class="today-arrow">↻</span>' +
+          '<div class="muted">과거 기록을 바꾸면 자동 반영</div>' +
         '</div>' +
         '<div id="cal-mount"></div>' +
         '<div class="history-list">' + listHTML + '</div>' +
@@ -698,6 +742,9 @@
     );
 
     node.querySelector("#cal-mount").appendChild(buildCalendar(s));
+    node.querySelectorAll(".h-item.editable").forEach(function (item) {
+      item.addEventListener("click", function () { go("spend", item.dataset.key); });
+    });
     node.querySelector("#back").addEventListener("click", function () { go("home"); });
     render(node);
   }
@@ -706,8 +753,6 @@
   function buildCalendar(s) {
     var dows = ["일", "월", "화", "수", "목", "금", "토"];
     var tKey = todayKey();
-    var endKey = addDays(s.startDate, s.totalDays - 1); // 목표 마지막 날
-
     // 처음 보여줄 달: 오늘이 목표 기간 안이면 오늘 달, 아니면 시작 달
     var todayIdx = diffDays(s.startDate, tKey);
     var anchor = (todayIdx >= 0 && todayIdx < s.totalDays) ? fromKey(tKey) : fromKey(s.startDate);
@@ -758,6 +803,7 @@
         if (!inPeriod) cls += " out";
         else if (logged) cls += delta > 0 ? " save" : delta < 0 ? " over" : " even";
         else cls += " inperiod";
+        if (canEditDate(s, key)) cls += " editable";
         if (key === tKey) cls += " today";
 
         var badge = logged
@@ -765,12 +811,22 @@
           : "";
 
         html +=
-          '<div class="' + cls + '">' +
+          '<div class="' + cls + '" data-key="' + key + '"' +
+            (canEditDate(s, key) ? ' role="button" tabindex="0"' : '') + '>' +
             '<span class="d">' + day + '</span>' +
             (badge ? '<span class="m">' + badge + '</span>' : '') +
           '</div>';
       }
       gridEl.innerHTML = html;
+      gridEl.querySelectorAll(".cal-cell.editable").forEach(function (cell) {
+        cell.addEventListener("click", function () { go("spend", cell.dataset.key); });
+        cell.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            go("spend", cell.dataset.key);
+          }
+        });
+      });
     }
 
     function shift(delta) {
@@ -890,10 +946,10 @@
     celebrate: ScreenCelebrate
   };
 
-  function go(route) {
+  function go(route, arg) {
     currentRoute = route;
     window.scrollTo(0, 0);
-    (routes[route] || ScreenHome)();
+    (routes[route] || ScreenHome)(arg);
   }
 
   // 시작
