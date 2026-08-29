@@ -101,6 +101,17 @@ h1, h2, h3 { font-family: 'Jua', sans-serif; font-weight: 400; margin: 0; letter
   box-shadow: 0 8px 20px rgba(255, 138, 61, 0.32);
 }
 .btn-primary:disabled { background: var(--beige-deep); box-shadow: none; color: #fff; cursor: not-allowed; opacity: .7; }
+.btn-secondary {
+  width: auto;
+  flex: 0 0 auto;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  box-shadow: none;
+  font-size: 15px;
+  padding: 12px 13px;
+  white-space: nowrap;
+}
+.btn-secondary:disabled { background: var(--beige); color: var(--ink-faint); cursor: not-allowed; opacity: .7; }
 .btn-ghost {
   background: var(--cream);
   color: var(--ink-soft);
@@ -160,6 +171,22 @@ h1, h2, h3 { font-family: 'Jua', sans-serif; font-weight: 400; margin: 0; letter
   padding-left: 16px;
 }
 
+.current-total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 13px;
+  margin-top: 8px;
+}
+.current-total b { color: var(--ink); font-family: 'Jua', sans-serif; font-size: 16px; font-weight: 400; }
+.add-spend-box { border-top: 1px solid var(--beige); padding-top: 14px; }
+.add-spend-box > label { display: block; color: var(--ink-soft); font-size: 14px; margin-bottom: 8px; }
+.add-spend-row { display: flex; align-items: center; gap: 8px; }
+.add-spend-row .input-wrap { flex: 1; min-width: 0; }
+.add-spend-row .input-wrap input { font-size: 20px; padding: 12px 10px; }
+.add-spend-row .input-wrap .suffix { font-size: 15px; padding-right: 10px; }
+.add-help { font-size: 12px; line-height: 1.4; margin-top: 8px; }
 .quick-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .chip {
   border: none;

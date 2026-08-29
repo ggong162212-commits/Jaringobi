@@ -494,7 +494,7 @@
 
         '<div class="spacer"></div>' +
         (c.loggedToday
-          ? '<button class="btn btn-ghost" id="spend-btn">오늘 지출 다시 입력하기</button>'
+          ? '<button class="btn btn-ghost" id="spend-btn">오늘 지출 추가 / 수정하기</button>'
           : '<button class="btn btn-primary" id="spend-btn">오늘 지출 입력하기</button>') +
       '</div>'
     );
@@ -547,18 +547,31 @@
         '</div>' +
 
         '<div class="card">' +
-          '<div class="field" style="margin-bottom:0">' +
-            '<label>' + dateLabel + ' 쓴 금액</label>' +
+          '<div class="field" style="margin-bottom:14px">' +
+            '<label>' + dateLabel + ' 쓴 총 금액</label>' +
             '<div class="input-wrap">' +
               '<input id="in-spent" inputmode="numeric" placeholder="0" autofocus />' +
               '<span class="suffix">원</span>' +
             '</div>' +
-            '<div class="quick-row" id="spent-chips">' +
-              '<button class="chip" data-v="0">안 썼어요</button>' +
-              '<button class="chip" data-add="1000">+1천</button>' +
-              '<button class="chip" data-add="5000">+5천</button>' +
-              '<button class="chip" data-add="10000">+1만</button>' +
-            '</div>' +
+            '<div class="current-total muted">현재 총액 <b id="total-spent-preview">0원</b></div>' +
+          '</div>' +
+          (isToday ?
+            '<div class="add-spend-box">' +
+              '<label for="in-add">추가로 쓴 금액</label>' +
+              '<div class="add-spend-row">' +
+                '<div class="input-wrap">' +
+                  '<input id="in-add" inputmode="numeric" placeholder="0" />' +
+                  '<span class="suffix">원</span>' +
+                '</div>' +
+                '<button class="btn btn-secondary" id="add-spend" disabled>＋ 더하기</button>' +
+              '</div>' +
+              '<div class="muted add-help">지금 입력된 총액에 추가 금액을 자동으로 합산해요.</div>' +
+            '</div>' : '') +
+          '<div class="quick-row" id="spent-chips">' +
+            '<button class="chip" data-v="0">안 썼어요</button>' +
+            '<button class="chip" data-add="1000">+1천</button>' +
+            '<button class="chip" data-add="5000">+5천</button>' +
+            '<button class="chip" data-add="10000">+1만</button>' +
           '</div>' +
         '</div>' +
 
@@ -568,17 +581,36 @@
     );
 
     var inSpent = node.querySelector("#in-spent");
+    var inAdd = node.querySelector("#in-add");
+    var addSpend = node.querySelector("#add-spend");
+    var totalPreview = node.querySelector("#total-spent-preview");
     var submit = node.querySelector("#submit");
     var touched = false;
 
     if (logged) {
       inSpent.value = comma(existing);
       touched = true;
-      submit.disabled = false;
     }
 
-    function refresh() { submit.disabled = !touched; }
+    function refresh() {
+      var total = parseNum(inSpent.value);
+      submit.disabled = !touched;
+      totalPreview.textContent = won(total);
+      if (addSpend) addSpend.disabled = parseNum(inAdd.value) <= 0;
+    }
     attachCommaInput(inSpent, function () { touched = true; refresh(); });
+    if (inAdd) attachCommaInput(inAdd, refresh);
+
+    if (addSpend) {
+      addSpend.addEventListener("click", function () {
+        var extra = parseNum(inAdd.value);
+        if (!extra) return;
+        inSpent.value = comma(parseNum(inSpent.value) + extra);
+        inAdd.value = "";
+        touched = true;
+        refresh();
+      });
+    }
 
     node.querySelectorAll("#spent-chips .chip").forEach(function (ch) {
       ch.addEventListener("click", function () {
@@ -603,6 +635,7 @@
       ScreenResult(targetKey, targetAvailable, spent);
     });
 
+    refresh();
     render(node);
     setTimeout(function () { try { inSpent.focus(); } catch (e) {} }, 250);
   }
