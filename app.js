@@ -468,6 +468,15 @@
         '<div class="speech">' + speech + '</div>' +
         '<div class="mascot pop bounce" id="home-mascot"></div>' +
 
+        '<div class="goal-summary">' +
+          '<div class="goal-summary-head"><span>나의 목표</span><span class="goal-badge">진행 중</span></div>' +
+          '<div class="goal-summary-grid">' +
+            '<div class="goal-value"><span class="goal-label">목표 금액</span><b>' + won(s.goalAmount) + '</b></div>' +
+            '<div class="goal-value"><span class="goal-label">목표 기간</span><b>' + s.totalDays + '일</b></div>' +
+          '</div>' +
+          '<div class="goal-dates">' + prettyDate(s.startDate) + ' ~ ' + prettyDate(addDays(s.startDate, s.totalDays - 1)) + '</div>' +
+        '</div>' +
+
         '<div class="hero">' +
           '<div class="label">오늘 쓸 수 있는 금액</div>' +
           '<div class="big-amount' + overClass + '">' +
