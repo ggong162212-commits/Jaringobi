@@ -187,6 +187,14 @@ h1, h2, h3 { font-family: 'Jua', sans-serif; font-weight: 400; margin: 0; letter
 .add-spend-row .input-wrap input { font-size: 20px; padding: 12px 10px; }
 .add-spend-row .input-wrap .suffix { font-size: 15px; padding-right: 10px; }
 .add-help { font-size: 12px; line-height: 1.4; margin-top: 8px; }
+.add-income-box { border-top: 1px solid #d8eadb; padding-top: 14px; margin-top: 15px; }
+.add-income-box > label { display: block; color: #4d8460; font-size: 14px; margin-bottom: 8px; }
+.income-current { display: flex; justify-content: flex-end; align-items: baseline; gap: 5px; font-size: 12px; margin: -2px 0 7px; }
+.income-current b { color: #3c9d6c; font-family: 'Jua', sans-serif; font-size: 16px; font-weight: 400; }
+.btn-income { width: auto; flex: 0 0 auto; background: #e4f5e8; color: #328457; box-shadow: none; font-size: 15px; padding: 12px 13px; white-space: nowrap; }
+.btn-income:disabled { background: #eef5ef; color: #9bbba3; cursor: not-allowed; opacity: .7; }
+.income-clear { color: #70907a; font-size: 12px; padding: 8px 0 0; }
+.income-clear:disabled { color: var(--ink-faint); cursor: not-allowed; }
 .quick-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .chip {
   border: none;

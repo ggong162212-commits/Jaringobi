@@ -19,6 +19,7 @@
       var s = JSON.parse(raw);
       if (!s || !s.totalDays || !s.goalAmount) return null;
       if (!s.entries) s.entries = {};
+      if (!s.incomes) s.incomes = {};
       return s;
     } catch (e) {
       return null;
@@ -106,9 +107,28 @@
     return carry;
   }
 
+  /** targetKey 당일까지 기록된 추가 수입의 누적 */
+  function incomeThrough(s, targetKey) {
+    var income = 0;
+    var keys = Object.keys(s.incomes || {});
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      // 목표 기간 안에서 targetKey 당일까지 생긴 돈만 반영
+      if (isInPeriod(s, k) && diffDays(k, targetKey) >= 0) {
+        income += Number(s.incomes[k]) || 0;
+      }
+    }
+    return income;
+  }
+
+  /** 특정 날짜에 추가로 생긴 돈 */
+  function incomeOn(s, targetKey) {
+    return Number((s.incomes || {})[targetKey]) || 0;
+  }
+
   /** 특정 날짜에 쓸 수 있는 금액 */
   function availableForDate(s, targetKey) {
-    return s.dailyBase + carryBefore(s, targetKey);
+    return s.dailyBase + carryBefore(s, targetKey) + incomeThrough(s, targetKey);
   }
 
   /** 사용자가 지출을 입력하거나 수정할 수 있는 날짜인지 확인 */
@@ -123,21 +143,27 @@
     var elapsed = Math.min(s.totalDays, Math.max(0, diffDays(s.startDate, tKey) + 1));
     var remaining = Math.max(0, s.totalDays - diffDays(s.startDate, tKey) - 1);
 
-    var carry = carryBefore(s, tKey);             // 오늘 시작 시점 이월 잔액
-    var available = availableForDate(s, tKey);   // 오늘 쓸 수 있는 금액
-    var todaySpent = s.entries[tKey];             // 오늘 입력값 (undefined 가능)
+    var carry = carryBefore(s, tKey) + incomeThrough(s, tKey); // 지출 잔액 + 지금까지 추가 수입
+    var available = s.dailyBase + carry;   // 오늘 쓸 수 있는 금액
+        var todaySpent = s.entries[tKey];             // 오늘 입력값 (undefined 가능)
+    var todayIncome = incomeOn(s, tKey);
     var loggedToday = todaySpent !== undefined;
     var todayRemaining = loggedToday ? available - todaySpent : available;
+    // 누적: 기본 예산 + 추가 수입 - 지출 (= 현재까지 총 절약/잔액)
+    var totalAllocated = 0, totalSpent = 0, totalIncome = 0, savedDays = 0, overDays = 0;
 
-    // 누적: 기록된 모든 날의 base 합 - 지출 합  (= 현재까지 총 절약/잔액)
-    var totalAllocated = 0, totalSpent = 0, savedDays = 0, overDays = 0;
     Object.keys(s.entries).forEach(function (k) {
       totalAllocated += s.dailyBase;
       totalSpent += s.entries[k];
-      var d = s.dailyBase - s.entries[k];
+      totalIncome += incomeOn(s, k);
+      var d = s.dailyBase + incomeOn(s, k) - s.entries[k];
       if (d > 0) savedDays++; else if (d < 0) overDays++;
     });
-    var totalBalance = totalAllocated - totalSpent; // 누적 적립(+)/초과(-)
+    Object.keys(s.incomes || {}).forEach(function (k) {
+      if (!isInPeriod(s, k) || s.entries[k] !== undefined) return;
+      totalIncome += Number(s.incomes[k]) || 0;
+    });
+    var totalBalance = totalAllocated + totalIncome - totalSpent; // 누적 적립(+)/초과(-)
 
     // 기간이 끝났는지 (마지막 날 다음날 이후)
     var lastDayKey = addDays(s.startDate, s.totalDays - 1);
@@ -154,6 +180,7 @@
       carry: carry,
       available: available,
       todaySpent: todaySpent,
+      todayIncome: todayIncome,
       todayRemaining: todayRemaining,
       loggedToday: loggedToday,
       totalBalance: totalBalance,
@@ -415,7 +442,8 @@
         totalDays: state.days,
         startDate: state.startDate,
         dailyBase: base,
-        entries: {}
+        entries: {},
+        incomes: {}
       };
       saveState(s);
       go("home");
@@ -449,7 +477,7 @@
     } else {
       mood = c.carry < 0 ? "neutral" : "happy";
       speech = c.carry > 0
-        ? "어제까진 " + comma(c.carry) + "원 적립! 오늘도 알뜰하게 가볼까요?"
+        ? "지금까지 " + comma(c.carry) + "원 여유가 생겼어요! 오늘도 알뜰하게 가볼까요?"
         : (c.carry < 0
             ? "지금 " + comma(-c.carry) + "원 초과 중이에요. 오늘 조금만 아껴요!"
             : "오늘 하루도 알뜰하게 시작해볼까요? 🐹");
@@ -539,6 +567,7 @@
     var isToday = targetKey === todayKey();
     var targetAvailable = availableForDate(s, targetKey);
     var existing = s.entries[targetKey];
+    var existingIncome = incomeOn(s, targetKey);
     var logged = existing !== undefined;
     var dateLabel = isToday ? "오늘" : prettyDate(targetKey);
 
@@ -568,7 +597,7 @@
             '</div>' +
             '<div class="current-total muted">현재 총액 <b id="total-spent-preview">0원</b></div>' +
           '</div>' +
-          (isToday ?
+                    (isToday ?
             '<div class="add-spend-box">' +
               '<label for="in-add">추가로 쓴 금액</label>' +
               '<div class="add-spend-row">' +
@@ -580,6 +609,19 @@
               '</div>' +
               '<div class="muted add-help">지금 입력된 총액에 추가 금액을 자동으로 합산해요.</div>' +
             '</div>' : '') +
+          '<div class="add-income-box">' +
+            '<label for="in-income">추가로 생긴 돈</label>' +
+            '<div class="income-current muted">현재 추가 수입 <b id="income-preview">0원</b></div>' +
+            '<div class="add-spend-row">' +
+              '<div class="input-wrap">' +
+                '<input id="in-income" inputmode="numeric" placeholder="0" />' +
+                '<span class="suffix">원</span>' +
+              '</div>' +
+              '<button class="btn btn-income" id="add-income" disabled>＋ 더하기</button>' +
+            '</div>' +
+            '<button class="btn btn-text income-clear" id="clear-income" disabled>추가 수입 기록 지우기</button>' +
+            '<div class="muted add-help">새로 생긴 금액만 입력해 여러 번 더할 수 있어요. 오늘부터 마이너스를 줄여줘요.</div>' +
+          '</div>' +
           '<div class="quick-row" id="spent-chips">' +
             '<button class="chip" data-v="0">안 썼어요</button>' +
             '<button class="chip" data-add="1000">+1천</button>' +
@@ -596,23 +638,34 @@
     var inSpent = node.querySelector("#in-spent");
     var inAdd = node.querySelector("#in-add");
     var addSpend = node.querySelector("#add-spend");
+    var inIncome = node.querySelector("#in-income");
+    var addIncome = node.querySelector("#add-income");
+    var incomePreview = node.querySelector("#income-preview");
+    var clearIncome = node.querySelector("#clear-income");
     var totalPreview = node.querySelector("#total-spent-preview");
     var submit = node.querySelector("#submit");
     var touched = false;
+    var incomeTouched = false;
+    var incomeTotal = existingIncome;
 
     if (logged) {
       inSpent.value = comma(existing);
       touched = true;
     }
+    if (existingIncome > 0) incomeTouched = true;
 
     function refresh() {
       var total = parseNum(inSpent.value);
-      submit.disabled = !touched;
+      submit.disabled = !touched && !incomeTouched;
       totalPreview.textContent = won(total);
+      incomePreview.textContent = won(incomeTotal);
       if (addSpend) addSpend.disabled = parseNum(inAdd.value) <= 0;
+      if (addIncome) addIncome.disabled = parseNum(inIncome.value) <= 0;
+      if (clearIncome) clearIncome.disabled = incomeTotal <= 0;
     }
     attachCommaInput(inSpent, function () { touched = true; refresh(); });
     if (inAdd) attachCommaInput(inAdd, refresh);
+    if (inIncome) attachCommaInput(inIncome, refresh);
 
     if (addSpend) {
       addSpend.addEventListener("click", function () {
@@ -621,6 +674,26 @@
         inSpent.value = comma(parseNum(inSpent.value) + extra);
         inAdd.value = "";
         touched = true;
+        refresh();
+      });
+    }
+
+    if (addIncome) {
+      addIncome.addEventListener("click", function () {
+        var extra = parseNum(inIncome.value);
+        if (!extra) return;
+        incomeTotal += extra;
+        inIncome.value = "";
+        incomeTouched = true;
+        refresh();
+      });
+    }
+
+    if (clearIncome) {
+      clearIncome.addEventListener("click", function () {
+        incomeTotal = 0;
+        inIncome.value = "";
+        incomeTouched = true;
         refresh();
       });
     }
@@ -642,10 +715,14 @@
     submit.addEventListener("click", function () {
       if (submit.disabled) return;
       var spent = parseNum(inSpent.value);
+      var income = incomeTotal;
       var s2 = loadState();
-      s2.entries[targetKey] = spent;
+      if (!s2.incomes) s2.incomes = {};
+      if (touched || logged || incomeTouched || existingIncome > 0) s2.entries[targetKey] = spent;
+      if (income > 0) s2.incomes[targetKey] = income;
+      else delete s2.incomes[targetKey];
       saveState(s2);
-      ScreenResult(targetKey, targetAvailable, spent);
+      ScreenResult(targetKey, availableForDate(s2, targetKey), spent);
     });
 
     refresh();
@@ -756,6 +833,7 @@
         : delta > 0 ? "＋" + comma(delta) + " 적립 · 수정"
         : delta < 0 ? "−" + comma(-delta) + " 초과 · 수정"
         : "딱 맞음 · 수정";
+      if (incomeOn(s, r.key) > 0) dtxt += " · 수입 ＋" + comma(incomeOn(s, r.key));
       var editable = canEditDate(s, r.key);
       listHTML +=
         '<button class="h-item' + (editable ? ' editable' : '') + '" data-key="' + r.key + '" ' +
@@ -843,7 +921,7 @@
         var inPeriod = idx >= 0 && idx < s.totalDays;
         var entry = s.entries[key];
         var logged = entry !== undefined;
-        var delta = logged ? (s.dailyBase - entry) : null;
+        var delta = logged ? (availableForDate(s, key) - entry) : null;
 
         var cls = "cal-cell";
         if (!inPeriod) cls += " out";
