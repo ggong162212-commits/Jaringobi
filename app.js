@@ -566,6 +566,9 @@
 
     var isToday = targetKey === todayKey();
     var targetAvailable = availableForDate(s, targetKey);
+    var nextKey = addDays(targetKey, 1);
+    var hasNext = isInPeriod(s, nextKey);
+    var nextAvailable = hasNext ? availableForDate(s, nextKey) : null;
     var existing = s.entries[targetKey];
     var existingIncome = incomeOn(s, targetKey);
     var logged = existing !== undefined;
@@ -578,14 +581,17 @@
           '<h2>' + dateLabel + ' 지출 ' + (logged ? '수정' : '입력') + '</h2>' +
         '</div>' +
 
-        '<div class="card center" style="background:var(--cream);box-shadow:none">' +
-          '<div class="muted" style="font-size:14px">' + dateLabel + ' 쓸 수 있는 금액</div>' +
-          '<div style="font-family:\'Jua\',sans-serif;font-size:30px;color:' +
-            (targetAvailable < 0 ? 'var(--bad)' : 'var(--ink)') + ';margin-top:2px">' + won(targetAvailable) + '</div>' +
-          (targetAvailable !== s.dailyBase
-            ? '<div class="muted" style="font-size:12.5px;margin-top:3px">기본 ' + comma(s.dailyBase) + '원 ' +
-                (targetAvailable > s.dailyBase ? '＋ 적립 ' + comma(targetAvailable - s.dailyBase) : '− 초과 ' + comma(s.dailyBase - targetAvailable)) + '원</div>'
-            : '') +
+        '<div class="card center live-budget-card" style="background:var(--cream);box-shadow:none">' +
+          '<div class="muted" id="budget-label" style="font-size:14px">' + dateLabel + (logged ? ' 남은 금액' : ' 쓸 수 있는 금액') + '</div>' +
+          '<div id="budget-preview" style="font-family:\'Jua\',sans-serif;font-size:30px;color:' +
+            ((logged ? targetAvailable - existing : targetAvailable) < 0 ? 'var(--bad)' : 'var(--ink)') + ';margin-top:2px">' +
+            won(logged ? targetAvailable - existing : targetAvailable) + '</div>' +
+          '<div class="muted" id="budget-detail" style="font-size:12.5px;margin-top:3px"></div>' +
+          (hasNext ?
+            '<div class="next-budget-preview">' +
+              '<span>내일 쓸 수 있는 금액</span>' +
+              '<b id="next-budget-preview">' + won(nextAvailable) + '</b>' +
+            '</div>' : '') +
         '</div>' +
 
         '<div class="card">' +
@@ -642,6 +648,10 @@
     var addIncome = node.querySelector("#add-income");
     var incomePreview = node.querySelector("#income-preview");
     var clearIncome = node.querySelector("#clear-income");
+    var budgetLabel = node.querySelector("#budget-label");
+    var budgetPreview = node.querySelector("#budget-preview");
+    var budgetDetail = node.querySelector("#budget-detail");
+    var nextBudgetPreview = node.querySelector("#next-budget-preview");
     var totalPreview = node.querySelector("#total-spent-preview");
     var submit = node.querySelector("#submit");
     var touched = false;
@@ -656,9 +666,25 @@
 
     function refresh() {
       var total = parseNum(inSpent.value);
+      var plannedAvailable = targetAvailable + (incomeTotal - existingIncome);
+      var hasPlannedSpend = logged || touched || incomeTouched;
+      var plannedRemaining = hasPlannedSpend ? plannedAvailable - total : plannedAvailable;
+      var incomeText = incomeTotal > 0 ? ' ＋ 수입 ' + comma(incomeTotal) + '원' : '';
+      var carryAmount = plannedAvailable - s.dailyBase - incomeTotal;
+      var carryText = carryAmount > 0 ? ' ＋ 적립 ' + comma(carryAmount) + '원' : carryAmount < 0 ? ' − 초과 ' + comma(-carryAmount) + '원' : '';
+
       submit.disabled = !touched && !incomeTouched;
       totalPreview.textContent = won(total);
       incomePreview.textContent = won(incomeTotal);
+      budgetLabel.textContent = dateLabel + (hasPlannedSpend ? ' 남은 금액' : ' 쓸 수 있는 금액');
+      budgetPreview.textContent = won(plannedRemaining);
+      budgetPreview.style.color = plannedRemaining < 0 ? 'var(--bad)' : 'var(--ink)';
+      budgetDetail.textContent = '기본 ' + comma(s.dailyBase) + '원' + carryText + incomeText;
+      if (nextBudgetPreview) {
+        var plannedNext = nextAvailable + (incomeTotal - existingIncome) + ((existing === undefined ? 0 : existing) - total);
+        nextBudgetPreview.textContent = won(plannedNext);
+        nextBudgetPreview.style.color = plannedNext < 0 ? 'var(--bad)' : 'var(--accent-deep)';
+      }
       if (addSpend) addSpend.disabled = parseNum(inAdd.value) <= 0;
       if (addIncome) addIncome.disabled = parseNum(inIncome.value) <= 0;
       if (clearIncome) clearIncome.disabled = incomeTotal <= 0;

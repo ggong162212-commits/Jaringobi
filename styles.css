@@ -180,6 +180,9 @@ h1, h2, h3 { font-family: 'Jua', sans-serif; font-weight: 400; margin: 0; letter
   margin-top: 8px;
 }
 .current-total b { color: var(--ink); font-family: 'Jua', sans-serif; font-size: 16px; font-weight: 400; }
+.live-budget-card { padding-bottom: 12px; }
+.next-budget-preview { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-top: 1px solid rgba(239, 214, 174, .8); margin-top: 12px; padding-top: 10px; color: var(--ink-soft); font-size: 12px; text-align: left; }
+.next-budget-preview b { color: var(--accent-deep); font-family: 'Jua', sans-serif; font-size: 17px; font-weight: 400; white-space: nowrap; }
 .add-spend-box { border-top: 1px solid var(--beige); padding-top: 14px; }
 .add-spend-box > label { display: block; color: var(--ink-soft); font-size: 14px; margin-bottom: 8px; }
 .add-spend-row { display: flex; align-items: center; gap: 8px; }
