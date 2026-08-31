@@ -127,6 +127,7 @@
     var available = availableForDate(s, tKey);   // 오늘 쓸 수 있는 금액
     var todaySpent = s.entries[tKey];             // 오늘 입력값 (undefined 가능)
     var loggedToday = todaySpent !== undefined;
+    var todayRemaining = loggedToday ? available - todaySpent : available;
 
     // 누적: 기록된 모든 날의 base 합 - 지출 합  (= 현재까지 총 절약/잔액)
     var totalAllocated = 0, totalSpent = 0, savedDays = 0, overDays = 0;
@@ -153,6 +154,7 @@
       carry: carry,
       available: available,
       todaySpent: todaySpent,
+      todayRemaining: todayRemaining,
       loggedToday: loggedToday,
       totalBalance: totalBalance,
       totalSpent: totalSpent,
@@ -453,7 +455,9 @@
             : "오늘 하루도 알뜰하게 시작해볼까요? 🐹");
     }
 
-    var overClass = c.available < 0 ? " over" : "";
+    var homeAmount = c.loggedToday ? c.todayRemaining : c.available;
+    var homeLabel = c.loggedToday ? "오늘 남은 금액" : "오늘 쓸 수 있는 금액";
+    var overClass = homeAmount < 0 ? " over" : "";
 
     var node = el(
       '<div class="screen">' +
@@ -478,7 +482,7 @@
         '</div>' +
 
         '<div class="hero">' +
-          '<div class="label">오늘 쓸 수 있는 금액</div>' +
+          '<div class="label">' + homeLabel + '</div>' +
           '<div class="big-amount' + overClass + '">' +
             '<span id="big-num">0</span><span class="won">원</span>' +
           '</div>' +
@@ -519,7 +523,7 @@
     requestAnimationFrame(function () {
       node.querySelector("#prog-bar").style.width = (c.progress * 100) + "%";
     });
-    countUp(node.querySelector("#big-num"), c.available, { dur: 800 });
+    countUp(node.querySelector("#big-num"), homeAmount, { dur: 800 });
   }
 
   // ---------------------------------------------------------------------
@@ -773,7 +777,7 @@
         '</div>' +
         '<div class="history-note">날짜를 누르면 지난 지출도 입력하거나 수정할 수 있어요.</div>' +
         '<div class="card history-today">' +
-          '<div><div class="muted">오늘 쓸 수 있는 금액</div><b>' + won(c.available) + '</b></div>' +
+          '<div><div class="muted">' + (c.loggedToday ? '오늘 남은 금액' : '오늘 쓸 수 있는 금액') + '</div><b>' + won(c.loggedToday ? c.todayRemaining : c.available) + '</b></div>' +
           '<span class="today-arrow">↻</span>' +
           '<div class="muted">과거 기록을 바꾸면 자동 반영</div>' +
         '</div>' +
