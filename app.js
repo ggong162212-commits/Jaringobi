@@ -164,6 +164,8 @@
       totalIncome += Number(s.incomes[k]) || 0;
     });
     var totalBalance = totalAllocated + totalIncome - totalSpent; // 누적 적립(+)/초과(-)
+    // 홈 화면용: 오늘까지 실제로 사용할 수 있었던 총액
+    var totalAvailableToDate = s.dailyBase * elapsed + incomeThrough(s, tKey);
 
     // 기간이 끝났는지 (마지막 날 다음날 이후)
     var lastDayKey = addDays(s.startDate, s.totalDays - 1);
@@ -184,6 +186,7 @@
       todayRemaining: todayRemaining,
       loggedToday: loggedToday,
       totalBalance: totalBalance,
+      totalAvailableToDate: totalAvailableToDate,
       totalSpent: totalSpent,
       goalAmount: s.goalAmount,
       savedDays: savedDays,
@@ -531,6 +534,15 @@
               (c.totalBalance >= 0 ? '+' : '−') + comma(Math.abs(c.totalBalance)) +
             '</div><div class="k">' + (c.totalBalance >= 0 ? '누적 적립' : '누적 초과') + '</div></div>' +
           '<div class="stat"><div class="v">' + comma(s.dailyBase) + '</div><div class="k">하루 기본예산</div></div>' +
+        '</div>' +
+
+        '<div class="spending-summary">' +
+          '<div class="spending-summary-title">지금까지의 사용 현황</div>' +
+          '<div class="spending-summary-grid">' +
+            '<div><div class="spending-label">총 사용 가능</div><b>' + won(c.totalAvailableToDate) + '</b></div>' +
+            '<div><div class="spending-label">총 지출</div><b>' + won(c.totalSpent) + '</b></div>' +
+          '</div>' +
+          '<div class="spending-summary-help">오늘까지의 기본 예산과 추가 수입을 합산한 금액이에요.</div>' +
         '</div>' +
 
         '<div class="spacer"></div>' +

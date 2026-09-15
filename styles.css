@@ -335,6 +335,20 @@ h1, h2, h3 { font-family: 'Jua', sans-serif; font-weight: 400; margin: 0; letter
 .stat .v.bad { color: var(--bad); }
 .stat .k { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
 
+.spending-summary {
+  background: var(--surface);
+  border: 1px solid var(--beige);
+  border-radius: var(--radius-sm);
+  padding: 15px 16px 13px;
+  box-shadow: var(--shadow-sm);
+}
+.spending-summary-title { color: var(--ink-soft); font-size: 13px; margin-bottom: 11px; }
+.spending-summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.spending-summary-grid > div + div { border-left: 1px solid var(--beige); padding-left: 14px; }
+.spending-label { color: var(--ink-soft); font-size: 12px; margin-bottom: 3px; }
+.spending-summary b { font-family: 'Jua', sans-serif; font-size: 21px; font-weight: 400; color: var(--ink); }
+.spending-summary-help { color: var(--ink-faint); font-size: 11.5px; margin-top: 10px; }
+
 /* ---------- 화면 전환 ---------- */
 .screen { animation: screenIn .35s ease both; display: flex; flex-direction: column; gap: 18px; flex: 1; }
 @keyframes screenIn { from { opacity: 0; transform: translateY(10px);} to {opacity:1; transform:none;} }
