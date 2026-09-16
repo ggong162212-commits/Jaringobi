@@ -149,23 +149,24 @@
     var todayIncome = incomeOn(s, tKey);
     var loggedToday = todaySpent !== undefined;
     var todayRemaining = loggedToday ? available - todaySpent : available;
-    // 누적: 기본 예산 + 추가 수입 - 지출 (= 현재까지 총 절약/잔액)
-    var totalAllocated = 0, totalSpent = 0, totalIncome = 0, savedDays = 0, overDays = 0;
+    // 누적 통계는 '기록한 날 수'가 아니라 목표 기간의 경과일을 기준으로 계산해야 함
+    // 예: 목표 60, 지출 70이면 기록한 날이 몇 일이든 잔액은 -10이어야 함
+    var totalSpent = 0, totalIncome = 0, savedDays = 0, overDays = 0;
 
     Object.keys(s.entries).forEach(function (k) {
-      totalAllocated += s.dailyBase;
-      totalSpent += s.entries[k];
-      totalIncome += incomeOn(s, k);
-      var d = s.dailyBase + incomeOn(s, k) - s.entries[k];
+      if (!isInPeriod(s, k) || diffDays(k, tKey) < 0) return;
+      totalSpent += Number(s.entries[k]) || 0;
+      var d = availableForDate(s, k) - (Number(s.entries[k]) || 0);
       if (d > 0) savedDays++; else if (d < 0) overDays++;
     });
     Object.keys(s.incomes || {}).forEach(function (k) {
-      if (!isInPeriod(s, k) || s.entries[k] !== undefined) return;
+      if (!isInPeriod(s, k) || diffDays(k, tKey) < 0) return;
       totalIncome += Number(s.incomes[k]) || 0;
     });
-    var totalBalance = totalAllocated + totalIncome - totalSpent; // 누적 적립(+)/초과(-)
-    // 홈 화면용: 오늘까지 실제로 사용할 수 있었던 총액
-    var totalAvailableToDate = s.dailyBase * elapsed + incomeThrough(s, tKey);
+    // 오늘까지 배정된 기본 예산 + 오늘까지의 추가 수입 - 오늘까지의 실제 지출
+    var baseAllocatedToDate = elapsed >= s.totalDays ? s.goalAmount : s.dailyBase * elapsed;
+    var totalAvailableToDate = baseAllocatedToDate + incomeThrough(s, tKey);
+    var totalBalance = totalAvailableToDate - totalSpent; // 누적 적립(+)/초과(-)
 
     // 기간이 끝났는지 (마지막 날 다음날 이후)
     var lastDayKey = addDays(s.startDate, s.totalDays - 1);
@@ -1016,7 +1017,7 @@
   function ScreenCelebrate() {
     var s = loadState();
     var c = compute(s);
-    var totalSaved = c.goalAmount - c.totalSpent; // 목표 대비 아낀 총액
+    var totalSaved = c.totalAvailableToDate - c.totalSpent; // 목표 예산·추가 수입 대비 잔액
     var positive = totalSaved >= 0;
 
     var node = el(
