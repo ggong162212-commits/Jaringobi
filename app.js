@@ -1099,14 +1099,15 @@
   }
 
   // ---------------------------------------------------------------------
-  //  선택 기능 · 비공개 Gist 자동 동기화
-  //  - 주소에 ?sync=<gist_id> 로 들어오거나 localStorage 에 id 가 저장돼 있을 때만 동작
+  //  선택 기능 · 비공개 시트 자동 동기화 (현대카드 일별 소비)
+  //  - 주소에 ?sync=<sheet_id> 로 들어오거나 localStorage 에 id 가 저장돼 있을 때만 동작
   //  - ?sync=off 로 들어오면 저장된 id 를 지우고 완전히 일반 모드로 돌아간다
   //  - 이 기능이 없는 기존 사용자(친구)는 위 조건이 모두 거짓이라 아무 영향도 받지 않는다
   //  - 목표(goalAmount·totalDays·startDate·dailyBase·incomes)와 이미 적힌 기록은 지우지 않고,
-  //    Gist 에 새로 올라온 날짜만 덮어쓴다. (수동으로 고친 날짜는 다음 Gist 갱신 전까지 유지)
+  //    시트에 새로 올라온 날짜만 덮어쓴다. (수동으로 고친 날짜는 다음 시트 갱신 전까지 유지)
+  //  - 시트는 '링크가 있는 모든 사용자 보기'로 공유된 비공개 시트이고,
+  //    읽기는 Google Sheets 의 gviz CSV 응답(CORS 허용)을 그대로 쓴다.
   // ---------------------------------------------------------------------
-  var SYNC_FILE = "jaringobi-sync.json";
   var SYNC_ID_KEY = "jaringobi-sync-id";
   var SYNC_LAST_KEY = "jaringobi-last-synced";
   var SYNC_MIN_GAP = 60000; // 앱을 오가며 너무 자주 호출하지 않도록 (ms)
@@ -1118,8 +1119,9 @@
     return m ? decodeURIComponent(m[1]).trim() : null;
   }
 
-  function validGistId(id) {
-    return typeof id === "string" && /^[0-9a-f]{20,40}$/i.test(id);
+  function validSyncId(id) {
+    // Google 스프레드시트 ID: 영문·숫자·-·_ 조합
+    return typeof id === "string" && /^[A-Za-z0-9_-]{20,80}$/.test(id);
   }
 
   /** 주소·저장소를 보고 이 기기에서 동기화를 쓸지 결정한다. */
@@ -1132,14 +1134,14 @@
         sync.id = null;
         return false;
       }
-      if (!validGistId(param)) {
+      if (!validSyncId(param)) {
         sync.id = null;
         return false;
       }
       var prev = null;
       try { prev = localStorage.getItem(SYNC_ID_KEY); } catch (e) {}
       if (prev !== param) {
-        // 다른 Gist 로 바꾸면 지난 동기화 기준값은 버린다.
+        // 다른 시트로 바꾸면 지난 동기화 기준값은 버린다.
         try { localStorage.setItem(SYNC_LAST_KEY, "{}"); } catch (e) {}
       }
       try { localStorage.setItem(SYNC_ID_KEY, param); } catch (e) {}
@@ -1147,7 +1149,7 @@
     } else {
       var saved = null;
       try { saved = localStorage.getItem(SYNC_ID_KEY); } catch (e) {}
-      sync.id = validGistId(saved) ? saved : null;
+      sync.id = validSyncId(saved) ? saved : null;
     }
     return !!sync.id;
   }
@@ -1187,8 +1189,63 @@
     try { localStorage.setItem(SYNC_LAST_KEY, JSON.stringify(map)); } catch (e) {}
   }
 
+  /** 아주 작은 CSV 파서 (따옴표로 묶인 쉼표·줄바꿈 처리, CRLF 허용) */
+  function parseCsv(text) {
+    var rows = [], row = [], field = "", inQuotes = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text.charAt(i + 1) === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          field += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field); field = "";
+      } else if (ch === "\n") {
+        row.push(field); rows.push(row); row = []; field = "";
+      } else if (ch !== "\r") {
+        field += ch;
+      }
+    }
+    if (field !== "" || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
   /**
-   * Gist 의 entries 를 로컬 기록에 합친다.
+   * 시트(CSV)를 entries 맵으로 바꾼다.
+   * A열 date(YYYY-MM-DD), B열 amount(정수) 기준. 헤더 이름으로 열을 찾고,
+   * 헤더가 없으면 첫 두 열을 날짜·금액으로 본다.
+   */
+  function entriesFromSheetCsv(text) {
+    var rows = parseCsv(text || "");
+    var entries = {};
+    if (!rows.length) return entries;
+
+    var header = rows[0].map(function (h) { return String(h).trim().toLowerCase(); });
+    var dateCol = header.indexOf("date");
+    var amountCol = header.indexOf("amount");
+    var hasHeader = dateCol >= 0 && amountCol >= 0;
+    if (!hasHeader) { dateCol = 0; amountCol = 1; }
+
+    for (var r = hasHeader ? 1 : 0; r < rows.length; r++) {
+      var line = rows[r] || [];
+      var key = String(line[dateCol] === undefined ? "" : line[dateCol]).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+      var raw = String(line[amountCol] === undefined ? "" : line[amountCol]).replace(/[^0-9.\-]/g, "");
+      if (!raw) continue;
+      var value = Number(raw);
+      if (!isFinite(value) || value < 0) continue;
+      entries[key] = Math.round(value);
+    }
+    return entries;
+  }
+
+  /**
+   * 시트에서 받은 entries 를 로컬 기록에 합친다.
    * - 마지막으로 반영한 값과 같은 날짜는 건드리지 않는다 (앱에서 직접 고친 값 유지)
    * - 목표를 아직 세우지 않았으면 아무것도 하지 않고 기다린다
    * @returns {boolean} 화면을 다시 그려야 하는지
@@ -1219,16 +1276,14 @@
     return changed;
   }
 
-  function handleSyncPayload(text) {
-    var payload;
-    try { payload = JSON.parse(text); } catch (e) { return; }
-    if (!payload || typeof payload !== "object") return;
+  function handleSyncSheet(text) {
+    var entries = entriesFromSheetCsv(text);
 
     var now = new Date();
     sync.lastSyncAt = two(now.getHours()) + ":" + two(now.getMinutes());
     updateSyncBadge();
 
-    if (applySyncedEntries(payload.entries)) {
+    if (applySyncedEntries(entries)) {
       // 지출 입력 중에는 입력값을 날리지 않도록 다시 그리지 않는다.
       if (currentRoute && currentRoute !== "spend") go(currentRoute);
     }
@@ -1241,23 +1296,14 @@
     if (!force && now - sync.lastTryAt < SYNC_MIN_GAP) return;
     sync.lastTryAt = now;
 
-    var url = "https://api.github.com/gists/" + encodeURIComponent(sync.id) + "?t=" + now;
+    var url = "https://docs.google.com/spreadsheets/d/" + encodeURIComponent(sync.id) +
+      "/gviz/tq?tqx=out:csv&t=" + now;
 
-    fetch(url, { cache: "no-store", headers: { Accept: "application/vnd.github+json" } })
-      .then(function (res) { return res.ok ? res.json() : null; })
-      .then(function (data) {
-        if (!data) return;
-        var file = data.files && data.files[SYNC_FILE];
-        if (!file) return;
-        if (typeof file.content === "string" && file.content) {
-          handleSyncPayload(file.content);
-        } else if (file.raw_url) {
-          // 파일이 커서 content 가 잘려 오면 원문을 따로 받아온다.
-          fetch(file.raw_url + "?t=" + Date.now(), { cache: "no-store" })
-            .then(function (res) { return res.ok ? res.text() : null; })
-            .then(function (text) { if (text) handleSyncPayload(text); })
-            .catch(function () {});
-        }
+    fetch(url, { cache: "no-store" })
+      .then(function (res) { return res.ok ? res.text() : null; })
+      .then(function (text) {
+        if (text === null) return;
+        handleSyncSheet(text);
       })
       .catch(function () {});
   }
