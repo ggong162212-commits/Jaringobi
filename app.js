@@ -1099,6 +1099,170 @@
   }
 
   // ---------------------------------------------------------------------
+  //  선택 기능 · 비공개 Gist 자동 동기화
+  //  - 주소에 ?sync=<gist_id> 로 들어오거나 localStorage 에 id 가 저장돼 있을 때만 동작
+  //  - ?sync=off 로 들어오면 저장된 id 를 지우고 완전히 일반 모드로 돌아간다
+  //  - 이 기능이 없는 기존 사용자(친구)는 위 조건이 모두 거짓이라 아무 영향도 받지 않는다
+  //  - 목표(goalAmount·totalDays·startDate·dailyBase·incomes)와 이미 적힌 기록은 지우지 않고,
+  //    Gist 에 새로 올라온 날짜만 덮어쓴다. (수동으로 고친 날짜는 다음 Gist 갱신 전까지 유지)
+  // ---------------------------------------------------------------------
+  var SYNC_FILE = "jaringobi-sync.json";
+  var SYNC_ID_KEY = "jaringobi-sync-id";
+  var SYNC_LAST_KEY = "jaringobi-last-synced";
+  var SYNC_MIN_GAP = 60000; // 앱을 오가며 너무 자주 호출하지 않도록 (ms)
+
+  var sync = { id: null, lastSyncAt: "", lastTryAt: 0, badge: null };
+
+  function readSyncParam() {
+    var m = /[?&]sync=([^&#]*)/.exec(window.location.search);
+    return m ? decodeURIComponent(m[1]).trim() : null;
+  }
+
+  function validGistId(id) {
+    return typeof id === "string" && /^[0-9a-f]{20,40}$/i.test(id);
+  }
+
+  /** 주소·저장소를 보고 이 기기에서 동기화를 쓸지 결정한다. */
+  function setupSync() {
+    var param = readSyncParam();
+
+    if (param !== null) {
+      if (param.toLowerCase() === "off") {
+        try { localStorage.removeItem(SYNC_ID_KEY); } catch (e) {}
+        sync.id = null;
+        return false;
+      }
+      if (!validGistId(param)) {
+        sync.id = null;
+        return false;
+      }
+      var prev = null;
+      try { prev = localStorage.getItem(SYNC_ID_KEY); } catch (e) {}
+      if (prev !== param) {
+        // 다른 Gist 로 바꾸면 지난 동기화 기준값은 버린다.
+        try { localStorage.setItem(SYNC_LAST_KEY, "{}"); } catch (e) {}
+      }
+      try { localStorage.setItem(SYNC_ID_KEY, param); } catch (e) {}
+      sync.id = param;
+    } else {
+      var saved = null;
+      try { saved = localStorage.getItem(SYNC_ID_KEY); } catch (e) {}
+      sync.id = validGistId(saved) ? saved : null;
+    }
+    return !!sync.id;
+  }
+
+  function two(n) { return n < 10 ? "0" + n : "" + n; }
+
+  function syncBadge() {
+    if (!sync.badge) {
+      var b = document.createElement("div");
+      b.id = "sync-badge";
+      b.className = "sync-badge";
+      b.hidden = true;
+      document.body.appendChild(b);
+      sync.badge = b;
+    }
+    return sync.badge;
+  }
+
+  /** 동기화 표시는 동기화 모드에서만 보인다. */
+  function updateSyncBadge() {
+    var b = syncBadge();
+    if (!sync.id) { b.hidden = true; return; }
+    b.hidden = false;
+    b.textContent = sync.lastSyncAt
+      ? "🔄 현대카드 자동 동기화 · " + sync.lastSyncAt
+      : "🔄 현대카드 자동 동기화 중";
+  }
+
+  function loadLastSynced() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(SYNC_LAST_KEY) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e) { return {}; }
+  }
+
+  function saveLastSynced(map) {
+    try { localStorage.setItem(SYNC_LAST_KEY, JSON.stringify(map)); } catch (e) {}
+  }
+
+  /**
+   * Gist 의 entries 를 로컬 기록에 합친다.
+   * - 마지막으로 반영한 값과 같은 날짜는 건드리지 않는다 (앱에서 직접 고친 값 유지)
+   * - 목표를 아직 세우지 않았으면 아무것도 하지 않고 기다린다
+   * @returns {boolean} 화면을 다시 그려야 하는지
+   */
+  function applySyncedEntries(entries) {
+    if (!entries || typeof entries !== "object") return false;
+
+    var s = loadState();
+    if (!s) return false;
+
+    var last = loadLastSynced();
+    var changed = false;
+
+    Object.keys(entries).forEach(function (key) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+      var value = Number(entries[key]);
+      if (!isFinite(value) || value < 0) return;
+      if (last[key] === value) return;      // 이미 반영한 값
+      last[key] = value;
+      if (s.entries[key] !== value) {
+        s.entries[key] = value;             // 기존에 적어 둔 다른 날짜 기록은 그대로 둔다
+        changed = true;
+      }
+    });
+
+    saveLastSynced(last);
+    if (changed) saveState(s);
+    return changed;
+  }
+
+  function handleSyncPayload(text) {
+    var payload;
+    try { payload = JSON.parse(text); } catch (e) { return; }
+    if (!payload || typeof payload !== "object") return;
+
+    var now = new Date();
+    sync.lastSyncAt = two(now.getHours()) + ":" + two(now.getMinutes());
+    updateSyncBadge();
+
+    if (applySyncedEntries(payload.entries)) {
+      // 지출 입력 중에는 입력값을 날리지 않도록 다시 그리지 않는다.
+      if (currentRoute && currentRoute !== "spend") go(currentRoute);
+    }
+  }
+
+  /** 실패해도 조용히 넘어간다. 기존 localStorage 화면은 언제나 그대로 동작한다. */
+  function syncNow(force) {
+    if (!sync.id) return;
+    var now = Date.now();
+    if (!force && now - sync.lastTryAt < SYNC_MIN_GAP) return;
+    sync.lastTryAt = now;
+
+    var url = "https://api.github.com/gists/" + encodeURIComponent(sync.id) + "?t=" + now;
+
+    fetch(url, { cache: "no-store", headers: { Accept: "application/vnd.github+json" } })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        var file = data.files && data.files[SYNC_FILE];
+        if (!file) return;
+        if (typeof file.content === "string" && file.content) {
+          handleSyncPayload(file.content);
+        } else if (file.raw_url) {
+          // 파일이 커서 content 가 잘려 오면 원문을 따로 받아온다.
+          fetch(file.raw_url + "?t=" + Date.now(), { cache: "no-store" })
+            .then(function (res) { return res.ok ? res.text() : null; })
+            .then(function (text) { if (text) handleSyncPayload(text); })
+            .catch(function () {});
+        }
+      })
+      .catch(function () {});
+  }
+
+  // ---------------------------------------------------------------------
   //  라우터
   // ---------------------------------------------------------------------
   var routes = {
@@ -1117,9 +1281,19 @@
 
   // 시작
   function boot() {
+    var syncing = setupSync();
+
     var s = loadState();
     if (s) go("home");
     else go("setup");
+
+    if (syncing) {
+      updateSyncBadge();
+      syncNow(true);
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible") syncNow(false);
+      });
+    }
   }
 
   boot();
